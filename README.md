@@ -1,4 +1,4 @@
-Summarizer Bot
+# Summarizer Bot
 
 ## Description
 This is a tiny lil python discord bot for various LLM based functions inside a discord server. The titular feature summarizes the previous n messages in a channel and tries to summarize the most recently scheduled plans in a channel. It means if your friends have been figuring out times for plans, but the meeting time and place has changed a few times you can use this bot to summarize the plan for you.
