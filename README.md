@@ -3,7 +3,7 @@
 ## Description
 This is a tiny lil python discord bot for various LLM based functions inside a discord server. The titular feature summarizes the previous n messages in a channel and tries to summarize the most recently scheduled plans in a channel. It means if your friends have been figuring out times for plans, but the meeting time and place has changed a few times you can use this bot to summarize the plan for you.
 
-There is very little error handling (or protections!) and the bot is not very robust, this is a proof of concept for private discord servers with friends! Uses gemini at the moment, but can be easily swapped out for any other LLM model (or moved to something like litellm). 
+There is very little error handling (or protections!) and the bot is not very robust, this is a proof of concept for private discord servers with friends! Based on LiteLLM, currently setup to use local llama model but should be easy to change. 
 
 ## Features
 - Plan summarization: The bot can summarize the most recent plans discussed in a channel, making it easier for users to keep track of the details.
