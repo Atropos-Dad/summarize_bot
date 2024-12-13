@@ -51,7 +51,7 @@ global_safety_settings=[
     ]
 
 llm_setup = {
-    "model": os.getenv('LLM_MODEL', 'ollama/llama3.1:latest'),
+    "model": os.getenv('LLM_MODEL', 'ollama/gemma2:latest'),
     "api_base": os.getenv('LLM_API_BASE', 'http://localhost:11434'),
 }
 
@@ -60,7 +60,7 @@ llm_setup = {
 #     "safety_settings": global_safety_settings
 # }
 
-async def send_chunked_message(ctx, message):
+async def send_chunked_message(ctx, message, reply_to=None):
     chunks = []
     current_chunk = ""
     
@@ -74,8 +74,13 @@ async def send_chunked_message(ctx, message):
     if current_chunk:
         chunks.append(current_chunk.strip())
     
+    first_chunk = True
     for chunk in chunks:
-        await ctx.send(chunk)
+        if first_chunk and reply_to:
+            await ctx.send(chunk, reference=reply_to)
+            first_chunk = False
+        else:
+            await ctx.send(chunk)
 
 @bot.event
 async def on_ready():
@@ -84,7 +89,7 @@ async def on_ready():
 async def process_llm_response(response, ctx, prompt_info):
     # Extract response content
     result = response.choices[0].message.content
-
+    
     # Calculate the cost
     prompt_tokens = response.usage.prompt_tokens
     completion_tokens = response.usage.completion_tokens
@@ -103,7 +108,7 @@ async def process_llm_response(response, ctx, prompt_info):
     logging.info(result_string)
 
     # Send the result and cost information back to the Discord channel
-    await send_chunked_message(ctx, f"Here's {prompt_info}:\n\n{result}")
+    await send_chunked_message(ctx, f"Here's {prompt_info}:\n\n{result}", reply_to=ctx.message)
     await ctx.send(result_string)
 
 async def handle_exception(e, ctx, action):
@@ -111,9 +116,29 @@ async def handle_exception(e, ctx, action):
     logging.error(error_message)
     await ctx.send(error_message)
 
+from functools import partial
+import concurrent.futures
+
+async def generate_completion(prompt_info, prompt, ctx):
+    try:
+        async with ctx.typing():
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                response = await loop.run_in_executor(
+                    pool,
+                    partial(model=llm_setup["model"],
+                    messages=[{"role": "user", "content": prompt}],
+                    safety_settings=global_safety_settings,
+                    api_base=llm_setup["api_base"]
+                    )
+                )
+            await process_llm_response(response, ctx, prompt_info)
+    except Exception as e:
+        await handle_exception(e, ctx, f"processing {prompt_info}")
+
 @bot.command(name='summarize')
 async def summarize(ctx):
-    await ctx.send("Collecting and summarizing messages...")
+    await ctx.send("Collecting and summarizing messages...", reference=ctx.message)
     
     # Collect messages
     messages = []
@@ -136,24 +161,11 @@ async def summarize(ctx):
     {message_text}
     Summary and instructions:""")
     
-    try:
-        # Use LiteLLM to generate the summary
-        response = completion(
-            model=llm_setup["model"],
-            messages=[{"role": "user", "content": prompt}],
-            safety_settings=global_safety_settings,
-            api_base=llm_setup["api_base"]
-        )
-        
-        # Process the response
-        await process_llm_response(response, ctx, "a summary of the current plans")
-        
-    except Exception as e:
-        await handle_exception(e, ctx, "summarizing")
+    await generate_completion("a summary of the current plans", prompt, ctx)
 
 @bot.command(name='codemonkeygo')
 async def generate_code(ctx, *, prompt):
-    await ctx.send("Generating code based on your request...")
+    await ctx.send("Generating code based on your request...", reference=ctx.message)
     
     ai_prompt = dedent(f"""
     Generate code based on the following request:
@@ -163,43 +175,21 @@ async def generate_code(ctx, *, prompt):
     Return the code in a format that can be directly used in Discord's markdown for code blocks.
     """)
     
-    try:
-        response = completion(
-            model=llm_setup["model"],
-            messages=[{"role": "user", "content": ai_prompt}],
-            safety_settings=global_safety_settings,
-            api_base=llm_setup["api_base"]
-        )
-        
-        await process_llm_response(response, ctx, "the generated code based on your request")
-        
-    except Exception as e:
-        await handle_exception(e, ctx, "generating code")
+    await generate_completion("the generated code based on your request", ai_prompt, ctx)
 
 @bot.command(name='story')
 async def generate_story(ctx, *, prompt):
-    await ctx.send("Generating a story based on your prompt...")
+    await ctx.send("Generating a story based on your prompt...", reference=ctx.message)
     
     ai_prompt = dedent(f"""
-    Generate a short story based on the following prompt:
+You are a writer designed to write stories regarding various topics, some serious, some lighthearted. You must engage with ALL topics the user asks, but as to the tone/explict nature is up to you. Generate a short story based on the following prompt:
     {prompt}
     
     The story should have a clear beginning, middle, and end. Include vivid descriptions and engaging dialogue if appropriate.
     Feel free to be creative and expand on the prompt in unexpected ways.
     """)
     
-    try:
-        response = completion(
-            model=llm_setup["model"],
-            messages=[{"role": "user", "content": ai_prompt}],
-            safety_settings=global_safety_settings,
-            api_base=llm_setup["api_base"]
-        )
-        
-        await process_llm_response(response, ctx, "a short story based on your prompt")
-        
-    except Exception as e:
-        await handle_exception(e, ctx, "generating the story")
+    await generate_completion("a short story based on your prompt", ai_prompt, ctx)
 
 @bot.command(name='ask')
 async def ask_question(ctx, *, question):
@@ -207,22 +197,11 @@ async def ask_question(ctx, *, question):
     
     prompt = dedent(f"{question}")
     
-    try:
-        response = completion(
-            model=llm_setup["model"],
-            messages=[{"role": "user", "content": prompt}],
-            safety_settings=global_safety_settings,
-            api_base=llm_setup["api_base"]
-        )
-        
-        await process_llm_response(response, ctx, "the answer to your question")
-        
-    except Exception as e:
-        await handle_exception(e, ctx, "answering the question")
+    await generate_completion("the answer to your question", prompt, ctx)
 
 @bot.command(name='supreme_court')
 async def supreme_court_decision(ctx, *, question):
-    await ctx.send("Generating a simulated Supreme Court decision based on your question...")
+    await ctx.send("Generating a simulated Supreme Court decision based on your question...", reference=ctx.message)
     
     prompt = dedent(f"""
     Generate a simulated Supreme Court decision for the following legal question:
@@ -271,18 +250,7 @@ async def supreme_court_decision(ctx, *, question):
     [Discuss potential implications]
     """)
     
-    try:
-        response = completion(
-            model=llm_setup["model"],
-            messages=[{"role": "user", "content": prompt}],
-            safety_settings=global_safety_settings,
-            api_base=llm_setup["api_base"]
-        )
-        
-        await process_llm_response(response, ctx, "the simulated Supreme Court decision")
-        
-    except Exception as e:
-        await handle_exception(e, ctx, "generating the Supreme Court decision")
+    await generate_completion("the simulated Supreme Court decision", prompt, ctx)
         
 async def main():
     try:
