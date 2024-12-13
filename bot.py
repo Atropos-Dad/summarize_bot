@@ -126,10 +126,11 @@ async def generate_completion(prompt_info, prompt, ctx):
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 response = await loop.run_in_executor(
                     pool,
-                    partial(model=llm_setup["model"],
-                    messages=[{"role": "user", "content": prompt}],
-                    safety_settings=global_safety_settings,
-                    api_base=llm_setup["api_base"]
+                    partial(completion,
+                        model=llm_setup["model"],
+                        messages=[{"role": "user", "content": prompt}],
+                        safety_settings=global_safety_settings,
+                        api_base=llm_setup["api_base"]
                     )
                 )
             await process_llm_response(response, ctx, prompt_info)
